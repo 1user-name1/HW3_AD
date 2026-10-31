@@ -1,0 +1,86 @@
+Кто с кем работает: StPlatform и PetClinic
+
+1. StPlatform — сдача домашнего задания
+
+В проекте есть веб-страницы и API, которые принимают запросы; сервисы, где
+выполняются основные правила; и репозитории, через которые приложение читает
+и сохраняет данные. Объекты Submission, Assignment и User описывают сами сдачи,
+задания и пользователей.
+
+Вот как проходит сдача через API.
+
+Сначала контроллер находит студента:
+ApiSubmissionController.submit
+  -> UserService.byId
+  -> UserService.findById
+  -> UserRepository.findById
+
+Затем он передаёт сдачу в сервис:
+ApiSubmissionController.submit
+  -> SubmissionService.submit
+
+Сервис проверяет задание и сохраняет сдачу:
+SubmissionService.submit
+  -> AssignmentRepository.findById
+  -> SubmissionRepository.save
+
+Если студент приложил файл, сервис также сохраняет файл и запись о вложении.
+После этого он отправляет событие для дальнейшей проверки работы.
+
+В целом зависимости идут от API к сервисам, а от сервисов — к репозиториям.
+Но есть деталь: SubmissionService обращается к репозиторию заданий напрямую,
+не используя AssignmentService. Это не обязательно ошибка, но границу между
+сервисами можно провести аккуратнее.
+
+Я бы оставил контроллеру приём запроса, а поиск студента и правила сдачи
+собрал в одном сервисном сценарии. Зачем нужна такая граница: чтобы правила
+сдачи не зависели от того, пришёл запрос через API или веб-страницу.
+
+Основные файлы:
+- src/main/java/ru/urfu/platform/api/ApiSubmissionController.java
+- src/main/java/ru/urfu/platform/submission/SubmissionService.java
+- src/main/java/ru/urfu/platform/submission/SubmissionRepository.java
+- src/main/java/ru/urfu/platform/user/UserService.java
+- src/main/java/ru/urfu/platform/user/UserRepository.java
+- src/main/java/ru/urfu/platform/assignment/AssignmentRepository.java
+
+Источник: https://gitverse.ru/UnMatty/StPlatform
+Исследована версия HEAD, commit d85c53aba9382b03cad505eba6356d5d46b0ef8f.
+
+2. PetClinic — добавление визита
+
+Здесь мы проследили путь от VisitController. Сначала приложение загружает
+данные питомца, чтобы показать форму:
+
+VisitController.loadPetWithVisit
+  -> OwnerRepository.findById
+  -> Owner.getPet
+  -> Pet.addVisit
+
+Когда пользователь отправляет форму, контроллер добавляет визит питомцу
+и сохраняет изменения:
+
+VisitController.processNewVisitForm
+  -> Owner.addVisit
+  -> Pet.addVisit
+  -> OwnerRepository.save
+
+В этом сценарии есть контроллер, репозиторий и объекты предметной области —
+владелец, питомец и визит. Отдельного сервиса между контроллером и репозиторием
+нет: контроллер сам и загружает владельца, и запускает добавление визита,
+и сохраняет результат. Значит, не все зависимости идут по цепочке
+«контроллер → сервис → репозиторий».
+
+Я бы добавил VisitService и поручил ему весь сценарий добавления визита.
+Зачем нужна такая граница: контроллер занимается запросом и ответом, а правила
+работы с визитами можно проверять и использовать отдельно от веб-страницы.
+
+Основные файлы:
+- src/main/java/org/springframework/samples/petclinic/owner/VisitController.java
+- src/main/java/org/springframework/samples/petclinic/owner/OwnerRepository.java
+- src/main/java/org/springframework/samples/petclinic/owner/Owner.java
+- src/main/java/org/springframework/samples/petclinic/owner/Pet.java
+
+Источник: https://github.com/spring-projects/spring-petclinic
+Трассировку выполнил делегированный агент «PetClinic trace» (тип explore).
+Точное название модели агенту недоступно, поэтому указываю только известное.
